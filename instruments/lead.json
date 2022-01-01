@@ -1,0 +1,41 @@
+{
+    "name": "lead",
+    "envelope": {
+        "mode": "adsr",
+        "envelope": [
+            0.05,
+            0.08,
+            0.5,
+            0.05
+        ]
+    },
+    "oscillators": [
+        {
+            "mode": "m_saw",
+            "modulation": 0.7,
+            "detune_oct": 0,
+            "detune_cent": 0
+        },
+        {
+            "mode": "triangle",
+            "modulation": null,
+            "detune_oct": 1,
+            "detune_cent": 0
+        }
+    ],
+    "osc_weights": [
+        0.6666666666666666,
+        0.3333333333333333
+    ],
+    "volume": 0.6,
+    "effects": [
+        {
+            "controls": {
+                "lowcut": 1000,
+                "highcut": 4000,
+                "strength": 3
+            },
+            "mode": "band_pass"
+        }
+    ]
+}
