@@ -1,17 +1,13 @@
 import json
 import warnings
-import matplotlib
 import numpy as np
-from numpy.random import rand
 import matplotlib.pyplot as plt
-import matplotlib
-from scipy.fft import fft, fftfreq
-
-import effects as eff
-
+from numpy.random import rand
 from scipy.io import wavfile
-
+from scipy.fftpack import fftfreq, fft
 from scipy import signal
+
+import effects as eff_func
 
 from configs import CYCLES_FOR_PLOTS, FREQ_FOR_PLOTS, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, CYCLES_FOR_FFT, TUNING
 
@@ -32,11 +28,11 @@ class Oscillator:
         self.octave = detune_oct
 
         if mode == 'sine':
-            self.func = lambda arr: np.sin(arr)
+            self.func = np.sin
         if mode == 'square':
-            self.func = lambda arr: signal.square(arr)
+            self.func = signal.square
         if mode == 'saw':
-            self.func = lambda arr: signal.sawtooth(arr)
+            self.func = signal.sawtooth
         if mode == 'triangle':
             self.func = lambda arr: signal.sawtooth(arr, 0.5)
         if mode == 'noise':
@@ -45,28 +41,28 @@ class Oscillator:
             self.func = lambda arr: signal.sawtooth(arr, modulation)
         if mode == 'm_square':
             self.func = lambda arr: signal.square(arr, modulation)
-    
+
     def __str__(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
 
     def to_dict(self) -> dict:
-        dict = {
+        dictionary = {
             'mode': self.mode,
             'modulation': self.modulation,
             'detune_oct': self.octave,
             'detune_cent': self.cents
         }
-        return dict
-    
+        return dictionary
+
     def play_freq(self, duration, freq) -> np.ndarray:
         freq = (freq * 2**self.octave)  * 1.0005777895065548**self.cents
         arr = np.arange(round(duration * SAMPLE_RATE)) * 2 * np.pi / (SAMPLE_RATE/freq)
         wave = self.func(arr)
         return wave
-    
+
     def plot(self, ax = None) -> None:
         if not ax:
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
         ax.plot(self.play_freq(CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS, FREQ_FOR_PLOTS))
         ax.set_label(self.mode)
 
@@ -81,11 +77,11 @@ class Envelope:
         return json.dumps(self.to_dict(), indent=2)
 
     def to_dict(self) -> dict:
-        dict = {
+        dictionary = {
             'mode': self.mode,
             'envelope': self.envelope
             }
-        return dict
+        return dictionary
 
     def get_envelope(self, duration = None) -> np.ndarray:
         if self.mode == 'adsr':
@@ -107,7 +103,7 @@ class Envelope:
 
     def plot(self, ax=None) -> None:
         if not ax:
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
         env = self.get_envelope(ENV_LENGTH_FOR_PLOTS)
         ax.plot(np.linspace(0, ENV_LENGTH_FOR_PLOTS, len(env)), env, 'black')
 
@@ -128,28 +124,30 @@ class SynthBase:
         return json.dumps(self.to_dict(), indent=2)
 
     def to_dict(self) -> dict:
-        dict = {
+        dictionary = {
             'name': self.name,
             'envelope': self.envelope.to_dict(),
             'oscillators': [osc.to_dict() for osc in self.oscillators],
             'osc_weights': self.weights,
             'volume': self.volume
         }
-        return dict
-    
+        return dictionary
+
     def save_json(self, path) -> None:
-        with open(path, 'w') as file:
+        with open(path, 'w', encoding='utf-8') as file:
             json.dump(self.to_dict(), file, indent=4)
 
-    def from_dict(dict):
-        envelope = Envelope(**dict.pop('envelope'))
-        oscillators = [Oscillator(**osc) for osc in dict.pop('oscillators')]
-        return(SynthBase(dict.pop('name'), envelope, oscillators, **dict))
+    @staticmethod
+    def from_dict(dictionary):
+        envelope = Envelope(**dictionary.pop('envelope'))
+        oscillators = [Oscillator(**osc) for osc in dictionary.pop('oscillators')]
+        return SynthBase(dictionary.pop('name'), envelope, oscillators, **dictionary)
 
+    @staticmethod
     def from_json(path: str):
-        with open(path) as file:
+        with open(path, encoding='utf-8') as file:
             return SynthBase.from_dict(json.load(file))
-        
+
     def play_freq(self, length, freq, vel = 64) -> np.ndarray:
         envelope = self.envelope.get_envelope(length)
         duration = len(envelope)/SAMPLE_RATE
@@ -157,7 +155,7 @@ class SynthBase:
         for osc, weight in zip(self.oscillators[1:], self.weights[1:]):
             arr += osc.play_freq(duration, freq) * weight
         return np.multiply(arr*(self.volume*(vel/127)), envelope)
-    
+
     def play_note(self, length, note, vel = 64) -> np.ndarray:
         freq = TUNING*np.power(2, (note-69)/12)
         return self.play_freq(length, freq, vel)
@@ -170,11 +168,11 @@ class SynthBase:
 
     def set_vol(self, vol) -> None:
         self.volume = vol
-    
+
     def set_weights(self, weights: list) -> None:
         assert len(weights) == len(self.oscillators), 'list must contain weights for every oscillator'
         self.weights = np.array(weights)/np.sum(weights)
-    
+
     def get_fft(self, base_freq = FREQ_FOR_PLOTS) -> tuple[np.ndarray]:
         y = self.play_noenv(CYCLES_FOR_FFT/ base_freq, base_freq)
         N = len(y)
@@ -232,28 +230,27 @@ class Effect:
         assert mode in self.modes, f'unknown mode, try: {self.modes}'
         self.controls = controls
         self.mode = mode
-        self.on = True
+        self.on = on
         if mode == 'band_pass':
-            self.func = eff.band_pass
+            self.func = eff_func.band_pass
         if mode == 'medfilt':
-            self.func = eff.medfilt
+            self.func = eff_func.medfilt
         try:
             self.apply(np.ndarray([1, 0, 1, 0, 1, 0.5, 1]))
         except TypeError:
-            print('wrong keyword')
+            print('wrong keywords for effect control')
 
 
     def to_dict(self) -> dict:
-        dict = {
+        dictionary = {
             'controls': self.controls,
             'mode': self.mode
         }
-        return dict
-    
+        return dictionary
 
     def turn_off(self):
         self.on = False
-    
+
     def turn_on(self):
         self.on = True
 
@@ -269,31 +266,35 @@ class Effect:
 
 
 class Instrument(SynthBase):
-    def __new__(cls, synth_base: SynthBase, effects: list[Effect]):
-        synth_base.__class__ = cls
-        return synth_base
-
-    def __init__(self, synth_base: SynthBase, effects: list[Effect]) -> None:
+    def __init__(self, effects: list[Effect], *args, **kwargs) -> None:
         self.effects = effects
-    
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def from_synth_base(base: SynthBase, effects: list[Effect]): #TODO
+        dictionary = base.to_dict()
+        dictionary['effects'] = [eff.to_dict() for eff in effects]
+        return Instrument.from_dict(dictionary)
+
     def to_dict(self) -> dict:
-        dict = super().to_dict()
-        dict['effects'] = [eff.to_dict() for eff in self.effects]
-        return dict
+        dictionary = super().to_dict()
+        dictionary['effects'] = [eff.to_dict() for eff in self.effects]
+        return dictionary
 
-    def from_dict(dict):
-        effcts = dict.pop('effects')
+    @classmethod
+    def from_dict(cls, dictionary):
+        effcts = dictionary.pop('effects')
         effects = [Effect(**eff) for eff in effcts]
-        base = SynthBase.from_dict(dict)
-        return Instrument(base, effects)
+        base = super(cls, Instrument).from_dict(dictionary)
+        base.__class__ = cls
+        base.effects = effects
+        return base
 
-    def save_json(self, dir_path: str) -> None:
-        return super().save_json(dir_path)
-    
+    @staticmethod
     def from_json(path: str):
         if path == 'instruments/drums.json': #TODO nicely
             return Drums()
-        with open(path) as file:
+        with open(path, encoding='utf-8') as file:
             return Instrument.from_dict(json.load(file))
 
     def play_freq(self, length, freq, vel = 64) -> np.ndarray:
@@ -302,9 +303,6 @@ class Instrument(SynthBase):
             arr = eff.apply(arr)
         return arr
 
-    def plot(self):
-        return super().plot()
-    
     def play_noenv(self, lenght, freq) -> np.ndarray:
         arr = super().play_noenv(lenght, freq)
         for eff in self.effects:
@@ -316,12 +314,12 @@ class Drums:
         self.kick = load_wav('./samples/kick.WAV', 32767)*5
         self.snare = load_wav('./samples/snare.WAV', 32767)*5
         self.hihat = load_wav('./samples/hihat.WAV', 32767)*2
-    
-    def play_note(self, length, note , vel=64):
+
+    def play_note(self, _, note , vel=64):
         if note == 36:
-            return self.kick
+            return self.kick * vel/127
         if note == 38:
-            return self.snare
+            return self.snare * vel/127
         if note == 42:
-            return self.hihat
+            return self.hihat * vel/127
         print('undefined sample')

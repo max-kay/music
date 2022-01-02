@@ -1,15 +1,15 @@
 import mido
 import numpy as np
+from scipy.io import wavfile
 from configs import SAMPLE_RATE
 import song
-from scipy.io import wavfile
 import instruments as inst
 
 
-filepath = './midi_files/vel_test.mid'
+FILE_PATH = './midi_files/test.mid'
 
 
-alles = song.Song.from_midi(filepath)
+alles = song.Song.from_midi(FILE_PATH,)
 
 
 arr = alles.play()
@@ -17,4 +17,4 @@ arr = alles.play()
 arr = np.trim_zeros(arr, 'b')
 
 
-wavfile.write(f'./out/test.wav', SAMPLE_RATE, arr)
+wavfile.write('./out/testdgv.wav', SAMPLE_RATE, alles.play())

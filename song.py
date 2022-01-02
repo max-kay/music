@@ -1,7 +1,8 @@
 import numpy as np
+import mido
+
 from configs import SAMPLE_RATE
 import instruments as inst
-import mido
 
 class Voice:
     def __init__(self, name: str, instrument: inst.Instrument, notes: list, ccs: list) -> None:
@@ -10,6 +11,7 @@ class Voice:
         self.notes = notes
         self.ccs = ccs
 
+    @staticmethod
     def from_midi_track(track: mido.MidiTrack, ticks_per_second):
         current_time = 0
         current_notes = {}
@@ -35,16 +37,16 @@ class Voice:
                     notes.append([onset/ticks_per_second, ((current_time-onset)/ticks_per_second, msg.note, vel)])
         ccs = [[500000000, (0, 0, 0)]]
         return Voice(name, instrument, notes, ccs)
-    
+
     def play(self):
         notes = self.notes.copy()
         ccs = self.ccs.copy()
         arr = np.zeros(SAMPLE_RATE) #TODO nicely
         note_onset, current_note = notes.pop(0)
-        c_time, cc = ccs.pop(0)
+        c_time, control_change = ccs.pop(0)
         while len(notes) > 0:
             if c_time <= note_onset:
-                c_time, cc = ccs.pop(0)
+                c_time, control_change = ccs.pop(0)
             else:
                 note = self.instrument.play_note(*current_note)
                 pos = round(note_onset*SAMPLE_RATE)
@@ -59,8 +61,8 @@ class Voice:
 def add_with_index(fix: np.ndarray, mobile: np.ndarray, index) -> np.ndarray:
     if len(mobile) + index > len(fix):
         fix = np.pad(fix, (0, len(mobile) + index - len(fix)), constant_values=(0, 0))
-    for i, m in zip(range(index, index+len(mobile)), mobile):
-        fix[i] += m
+    for i, val in zip(range(index, index+len(mobile)), mobile):
+        fix[i] += val
     return fix
 
 def add_dif_len(arr1, arr2):
@@ -73,7 +75,8 @@ def add_dif_len(arr1, arr2):
 class Song:
     def __init__(self, voices: list) -> None:
         self.voices = voices
-        
+
+    @staticmethod
     def from_midi(filepath):
         midi = mido.MidiFile(filepath)
         ticks_per_beat = midi.ticks_per_beat
