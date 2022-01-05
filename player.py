@@ -8,11 +8,14 @@ import instruments as inst
 import array_func as af
 
 class Voice:
-    def __init__(self, name: str, instrument: inst.Instrument, notes: list, ccs: list) -> None:
+    def __init__(self, name: str, instrument: inst.Synthesizer, notes: list, ccs: list) -> None:
         self.name = name
         self.instrument = instrument
         self.notes = notes
         self.ccs = ccs
+
+    def __str__(self) -> str:
+        return f'Voice: {self.name} Instrument: {self.instrument.name} | {len(self.notes)} notes, {len(self.ccs)} control changes'
 
     @staticmethod
     def from_midi_track(track: mido.MidiTrack, ticks_per_second):
@@ -30,7 +33,7 @@ class Voice:
                 if msg.note in current_notes:
                     onset, vel = current_notes.pop(msg.note)
                     notes.append([onset/ticks_per_second, ((current_time-onset)/ticks_per_second, msg.note, vel)])
-        ccs = [[500000000, (0, 0, 0)]]
+        ccs = [[float('inf'), (0, 0, 0)]]
         return Voice(name, instrument, notes, ccs)
 
     def asign_inst(self):
@@ -75,6 +78,15 @@ class Player:
         self.name = name
         self.voices = voices
         self.effects = effects
+
+    def __str__(self) -> str:
+        string = f'Player: {self.name}\n  Voices:\n'
+        for voice in self.voices:
+            string += f'    {voice.__str__()}\n'
+        string += ' Effects:\n'
+        for effect in self.effects:
+            string += f'    {effect.__str__()}\n'
+        return string
 
     @staticmethod
     def from_midi(filepath):

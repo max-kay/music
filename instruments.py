@@ -10,7 +10,7 @@ import effects as eff_func
 import oscillators as osc
 import array_func as af
 
-from configs import CYCLES_FOR_PLOTS, FREQ_FOR_PLOTS, INST_PATH, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, CYCLES_FOR_FFT, TUNING
+from configs import CYCLES_FOR_PLOTS, DURATION_FOR_FFT, FREQ_FOR_PLOTS, INST_PATH, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, TUNING
 
 def load_wav(file_path: str):
     samplerate, arr = wavfile.read(file_path)
@@ -82,7 +82,8 @@ class TimeKeeper:
             arr = np.concatenate((attack, decay, sustain, release))
             return arr
         
-
+    def __str__(self) -> str: #TODO
+        return 'TimeKeeper:'
 
     def get_envelope(self, duration: float) -> np.ndarray:
         return self.make_envelope(self.envelope, duration)
@@ -111,7 +112,7 @@ class TimeKeeper:
         ax.plot(np.linspace(0, ENV_LENGTH_FOR_PLOTS, len(env)), env, 'black')
 
 class Oscillator:
-    def __init__(self, mode: str, modulation = None, detune_oct = 0, detune_cent = 0) -> None:
+    def __init__(self, mode: str, modulation = 0, detune_oct = 0, detune_cent = 0) -> None:
         self.mode = mode
         self.modulation = modulation
         self.cents = detune_cent
@@ -139,13 +140,54 @@ class Oscillator:
     def plot(self, ax = None) -> None:
         if not ax:
             _, ax = plt.subplots()
-        ax.plot(self.play_freq(CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS, FREQ_FOR_PLOTS))
+        duration = CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS
+        time_arr = np.linspace(0, duration, round(duration*SAMPLE_RATE))
+        ax.plot(self.play_freq(FREQ_FOR_PLOTS, time_arr))
         ax.set_label(self.mode)
 
-class SynthBase:
+class Effect:
+    def __init__(self, mode: str, controls: dict, on = True) -> None:
+        self.mode = mode
+        self.controls = controls
+        self.on = on
+        self.func = getattr(eff_func, mode)
+        # try: #TODO
+        #     self.apply(np.ndarray([1, 0, 1, 0, 1, 0.5, 1]))
+        # except TypeError:
+        #     print('wrong keywords for effect control')
 
-    def __init__(self, name: str, time_keeper: TimeKeeper,  oscillators: list[Oscillator], osc_weights=None, volume = 1):
+    def __str__(self):
+        controls = ''
+        for key, val in self.controls.items():
+            controls += f'{key} = {val}, '
+        return f'Effect("{self.mode}", {controls})'
+
+    def to_dict(self) -> dict:
+        dictionary = {
+            'mode': self.mode,
+            'controls': self.controls
+        }
+        return dictionary
+
+    def turn_off(self):
+        self.on = False
+
+    def turn_on(self):
+        self.on = True
+
+    def set_controls(self, **controls) -> None:
+        self.controls = controls
+
+    def apply(self, arr: np.ndarray) -> np.ndarray:
+        if self.on:
+            return self.func(arr, **self.controls)
+        else:
+            return arr
+
+class Synthesizer:
+    def __init__(self, effects: list[Effect], name: str, time_keeper: TimeKeeper,  oscillators: list[Oscillator], osc_weights=None, volume = 1) -> None:
         self.name = name
+        self.volume = volume
         self.time_keeper = time_keeper
         self.oscillators = oscillators
         if not osc_weights:
@@ -153,10 +195,10 @@ class SynthBase:
         else:
             assert len(oscillators) == len(osc_weights), 'osc_weights must contain weights for every oscillator'
             self.weights = list((osc_weights)/np.sum(osc_weights))
-        self.volume = volume
+        self.effects = effects
 
-    def __str__(self) -> str:
-        return json.dumps(self.to_dict(), indent=2)
+    def __str__(self):
+        return f'Synthesizer: {self.name}'
 
     def to_dict(self) -> dict:
         dictionary = {
@@ -164,24 +206,26 @@ class SynthBase:
             'volume': self.volume,
             'time_keeper': self.time_keeper.to_dict(),
             'oscillators': [osc.to_dict() for osc in self.oscillators],
-            'osc_weights': self.weights
+            'osc_weights': self.weights,
+            'effects': [eff.to_dict() for eff in self.effects]
         }
         return dictionary
+
+    @staticmethod
+    def from_dict(dictionary):
+        effects = [Effect(**eff) for eff in dictionary.pop('effects')]
+        envelope = TimeKeeper(**dictionary.pop('time_keeper'))
+        oscillators = [Oscillator(**osc) for osc in dictionary.pop('oscillators')]
+        return Synthesizer(effects, dictionary.pop('name'), envelope, oscillators, **dictionary)
 
     def save_json(self, path) -> None:
         with open(path, 'w', encoding='utf-8') as file:
             json.dump(self.to_dict(), file, indent=4)
 
     @staticmethod
-    def from_dict(dictionary):
-        envelope = TimeKeeper(**dictionary.pop('time_keeper'))
-        oscillators = [Oscillator(**osc) for osc in dictionary.pop('oscillators')]
-        return SynthBase(dictionary.pop('name'), envelope, oscillators, **dictionary)
-
-    @staticmethod
     def from_json(path: str):
         with open(path, encoding='utf-8') as file:
-            return SynthBase.from_dict(json.load(file))
+            return Synthesizer.from_dict(json.load(file))
 
     def play_freq(self, length, freq, vel = 64) -> np.ndarray:
         envelope = self.time_keeper.get_envelope(length)
@@ -190,30 +234,22 @@ class SynthBase:
         arr = np.zeros(len(envelope))
         for oscillator, weight in zip(self.oscillators, self.weights):
             arr += oscillator.play_freq(freq, time_arr) * weight
-        return np.multiply(arr*(self.volume*(vel/127)), envelope)
-
-    def play_note(self, length, note, vel = 64) -> np.ndarray:
-        freq = TUNING*np.power(2, (note-69)/12)
-        return self.play_freq(length, freq, vel)
-
-    def play_noenv(self, length, freq) -> np.ndarray:
-        envelope = self.time_keeper.get_envelope(length)
-        duration = len(envelope)/SAMPLE_RATE
-        time_arr = self.time_keeper.get_time_array(length, duration)
-        arr = self.oscillators[0].play_freq(length, time_arr) * self.weights[0]
-        for oscillator, weight in zip(self.oscillators[1:], self.weights[1:]):
-            arr += oscillator.play_freq(length, freq) * weight
+        arr = np.multiply(arr*(self.volume*(vel/127)), envelope)
+        for eff in self.effects:
+            arr = eff.apply(arr)
         return arr
-
-    def set_vol(self, vol) -> None:
-        self.volume = vol
 
     def set_weights(self, weights: list) -> None:
         assert len(weights) == len(self.oscillators), 'list must contain weights for every oscillator'
         self.weights = np.array(weights)/np.sum(weights)
 
+    def play_note(self, length, note, vel = 64) -> np.ndarray:
+        freq = TUNING*np.power(2, (note-69)/12)
+        return self.play_freq(length, freq, vel)
+
     def get_fft(self, base_freq = FREQ_FOR_PLOTS) -> tuple[np.ndarray]:
-        y = self.play_noenv(CYCLES_FOR_FFT/ base_freq, base_freq)
+        # time_arr = np.linspace(0, DURATION_FOR_FFT, round(DURATION_FOR_FFT*SAMPLE_RATE))
+        y = self.play_freq(DURATION_FOR_FFT, base_freq)
         N = len(y)
         T = 1.0 / SAMPLE_RATE
         yf = fft(y)
@@ -249,7 +285,12 @@ class SynthBase:
         ax3.set_title(f'Oscillators ({CYCLES_FOR_PLOTS} cycles)')
         ax3.get_xaxis().set_visible(False)
 
-        ax4.plot(self.play_noenv(CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS, FREQ_FOR_PLOTS), 'black')
+        duration = CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS
+        time_arr = np.linspace(0, duration, round(duration*SAMPLE_RATE))
+        arr = np.zeros(round(duration*SAMPLE_RATE))
+        for weight, oscillator in zip(self.weights, self.oscillators):
+            arr += oscillator.play_freq(FREQ_FOR_PLOTS, time_arr)*weight
+        ax4.plot(arr, 'black')
         ax4.set_title(f'Sum of Oscillators ({CYCLES_FOR_PLOTS} cycles)')
         ax4.get_xaxis().set_visible(False)
         with warnings.catch_warnings():
@@ -263,104 +304,6 @@ class SynthBase:
         gs2.update(left=left, right=right)
         return fig
 
-class Effect:
-    def __init__(self, mode: str, controls: dict, on = True) -> None:
-        self.mode = mode
-        self.controls = controls
-        self.on = on
-        self.func = getattr(eff_func, mode)
-        # try: #TODO
-        #     self.apply(np.ndarray([1, 0, 1, 0, 1, 0.5, 1]))
-        # except TypeError:
-        #     print('wrong keywords for effect control')
-
-    def __str__(self):
-        controls = ''
-        for key, val in self.controls.items():
-            controls += f'{key} = {val}, '
-        return f'Effect({self.mode}, {controls})'
-
-    def to_dict(self) -> dict:
-        dictionary = {
-            'mode': self.mode,
-            'controls': self.controls
-        }
-        return dictionary
-
-    def turn_off(self):
-        self.on = False
-
-    def turn_on(self):
-        self.on = True
-
-    def set_controls(self, **controls) -> None:
-        self.controls = controls
-
-    def apply(self, arr: np.ndarray) -> np.ndarray:
-        if self.on:
-            return self.func(arr, **self.controls)
-        else:
-            return arr
-
-class Instrument(SynthBase):
-    def __init__(self, effects: list[Effect], *args, **kwargs) -> None:
-        self.effects = effects
-        super().__init__(*args, **kwargs)
-
-    @staticmethod
-    def from_synth_base(base: SynthBase, effects: list[Effect]): #TODO
-        dictionary = base.to_dict()
-        dictionary['effects'] = [eff.to_dict() for eff in effects]
-        return Instrument.from_dict(dictionary)
-
-    def to_dict(self) -> dict:
-        dictionary = super().to_dict()
-        dictionary['effects'] = [eff.to_dict() for eff in self.effects]
-        return dictionary
-
-    @classmethod
-    def from_dict(cls, dictionary):
-        effcts = dictionary.pop('effects')
-        effects = [Effect(**eff) for eff in effcts]
-        base = super(cls, Instrument).from_dict(dictionary)
-        base.__class__ = cls
-        base.effects = effects
-        return base
-
-    @staticmethod
-    def from_json(path: str):
-        with open(path, encoding='utf-8') as file:
-            return Instrument.from_dict(json.load(file))
-
-    def play_freq(self, length, freq, vel = 64) -> np.ndarray:
-        arr = super().play_freq(length, freq, vel)
-        for eff in self.effects:
-            arr = eff.apply(arr)
-        return arr
-
-    def play_noenv(self, length, freq) -> np.ndarray:
-        arr = super().play_noenv(length, freq)
-        for eff in self.effects:
-            arr = eff.apply(arr)
-        return arr
-
-def get_user_inst(voice_name = ''):
-    while True:
-        name = input(f'filename for instrument in voice "{voice_name}" : ')
-        try:
-            if name == 'drums':
-                return Drums()
-            return Instrument.from_json(f'{INST_PATH}{name}.json')
-            print('Instrument assigned')
-        except FileNotFoundError:
-            print('No such file.')
-
-def inst_from_name(name: str):
-    if name == 'drums':
-        return Drums()
-    path = f'{INST_PATH}{name}.json'
-    return Instrument.from_json(path)    
-
 class Drums:
     def __init__(self) -> None:
         self.name = 'drums'
@@ -369,6 +312,9 @@ class Drums:
         self.snare = load_wav('./samples/snare.wav')*5
         self.hihat = load_wav('./samples/hihat.wav')*2
         self.hihat_half = load_wav('./samples/hihat_half.wav')*5
+
+    def __str__(self) -> str:
+        return 'Drums'
 
     def play_note(self, length, note , vel=64):
         if note == 36:
@@ -380,3 +326,19 @@ class Drums:
         if note == 46:
             return (self.hihat_half * self.volume * vel/127)[:round(length*SAMPLE_RATE)]
         raise Exception('note not found')
+
+def get_user_inst(voice_name = ''):
+    while True:
+        name = input(f'filename for instrument in voice "{voice_name}" : ')
+        try:
+            if name == 'drums':
+                return Drums()
+            return Synthesizer.from_json(f'{INST_PATH}{name}.json')
+        except FileNotFoundError:
+            print('No such file.')
+
+def inst_from_name(name: str):
+    if name == 'drums':
+        return Drums()
+    path = f'{INST_PATH}{name}.json'
+    return Synthesizer.from_json(path)

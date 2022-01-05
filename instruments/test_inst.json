@@ -18,13 +18,13 @@
         {
             "mode": "m_square",
             "modulation": 0.9,
-            "detune_oct": -1,
+            "detune_oct": 0,
             "detune_cent": 0
         },
         {
-            "mode": "saw",
-            "modulation": null,
-            "detune_oct": -1,
+            "mode": "triangle",
+            "modulation": 0,
+            "detune_oct": 0,
             "detune_cent": 0
         },
         {
@@ -35,17 +35,17 @@
         }
     ],
     "osc_weights": [
-        0.16666666666666666,
-        0.5,
-        0.3333333333333333
+        0.33333333,
+        0.333333333,
+        0.333333333
     ],
     "effects": [
         {
             "mode": "band_pass",
             "controls": {
-                "lowcut": 800,
-                "highcut": 1000,
-                "strength": 20
+                "lowcut": 100,
+                "highcut": 900,
+                "strength": 4
             }
         }
     ]
