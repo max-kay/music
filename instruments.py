@@ -2,45 +2,121 @@ import json
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy.random import rand
 from scipy.io import wavfile
 from scipy.fftpack import fftfreq, fft
 from scipy import signal
 
 import effects as eff_func
+import oscillators as osc
+import array_func as af
 
-from configs import CYCLES_FOR_PLOTS, FREQ_FOR_PLOTS, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, CYCLES_FOR_FFT, TUNING
+from configs import CYCLES_FOR_PLOTS, FREQ_FOR_PLOTS, INST_PATH, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, CYCLES_FOR_FFT, TUNING
 
-def load_wav(file_path: str, max_val):
-    _, arr = wavfile.read(file_path)
+def load_wav(file_path: str):
+    samplerate, arr = wavfile.read(file_path)
+    assert samplerate == SAMPLE_RATE
+    max_val = np.iinfo(arr.dtype).max
     arr = arr[:,0]/max_val
     return arr
 
-class Oscillator:
-    modes = ['sine', 'square', 'saw', 'triangle', 'm_saw', 'm_square', 'noise']
-    def __init__(self, mode: str, modulation = None, detune_oct = 0, detune_cent = 0) -> None:
-        assert mode in self.modes, f'{mode} is undefined, try one of the following modes: \n {self.modes}'
+class TimeKeeper:
+    def __init__(self, cables: dict, envelope, **kwargs):
+        """
+        envelope is allways mapped to amplitude during playing of the note and is a list of floats
+        envelope2 is can be mapped to frequency of the played note
+        lfo is a dict containing 'mode', 'freq', 'modulation'
+        cable keys[lfo_to_freq, env_to_freq, env2_to_freq]
+        """
+        self.cables = cables
+        self.envelope = envelope
+        if 'envelope2' in kwargs:
+            self.envelope2 = kwargs.pop('envelope2')
+        else:
+            self.envelope2 = [.1]
+        if 'lfo' in kwargs:
+            self.lfo = kwargs.pop('lfo')
+        else:
+            self.lfo = {
+                'mode': 'sine',
+                'freq': 1,
+                'modulation': 0
+            }
 
+    @staticmethod
+    def make_envelope(envelope: list, duration: float) -> np.ndarray:
+        if len(envelope) == 1:
+            dur_attack, = envelope
+            attack = np.linspace(1, 0, round(dur_attack*SAMPLE_RATE))
+            return af.cut_or_pad(round(duration*SAMPLE_RATE), attack, pad_val=1)
+
+        if len(envelope) == 2:
+            dur_attack, dur_decay = envelope
+            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
+            decay = np.linspace(1, 0, round(dur_decay*SAMPLE_RATE))
+            return np.concatenate((attack, decay))
+
+        if len(envelope) == 4:
+            dur_attack, dur_decay, val_sustain, dur_release = envelope
+            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
+            decay = np.linspace(1, val_sustain, round(dur_decay*SAMPLE_RATE))
+            if round(duration*SAMPLE_RATE) > len(attack) + len(decay):
+                sustain = np.full(round(duration * SAMPLE_RATE - len(decay) - len(attack)), val_sustain)
+            else:
+                sustain = []
+            release = np.linspace(val_sustain, 0, round(dur_release*SAMPLE_RATE))
+            arr = np.concatenate((attack, decay, sustain, release))
+            return arr
+
+        if len(envelope) == 5:
+            dur_attack, dur_decay, val_sustain, sus_decay, dur_release = envelope
+            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
+            decay = np.linspace(1, val_sustain, round(dur_decay*SAMPLE_RATE))
+            if round(duration*SAMPLE_RATE) > len(attack) + len(decay): #TODO
+                samples = round(duration * SAMPLE_RATE - len(decay) - len(attack))
+                sustain = np.full(200, val_sustain)#TODO
+                last_val = sustain[-1]
+            else:
+                sustain = []
+                last_val = val_sustain
+            release = np.linspace(last_val, 0, round(dur_release*SAMPLE_RATE))
+            arr = np.concatenate((attack, decay, sustain, release))
+            return arr
+        
+
+
+    def get_envelope(self, duration: float) -> np.ndarray:
+        return self.make_envelope(self.envelope, duration)
+
+    def get_time_array(self, length: float, duration: float, vel = 64):
+        time = np.linspace(0, duration, round(duration*SAMPLE_RATE))
+        time += getattr(osc, self.lfo['mode'])(time*self.lfo['freq'] * 2*np.pi, self.lfo['modulation']) * self.cables['lfo_to_freq']
+        time += self.make_envelope(self.envelope, length) * self.cables['env_to_freq']
+        time += af.cut_or_pad(len(time), self.make_envelope(self.envelope2, length) * self.cables['env2_to_freq'])
+        return time
+
+    def __str__(self) -> str:
+        pass
+
+    def to_dict(self) -> dict:
+        dictionary = {
+            'cables': self.cables,
+            'envelope': self.envelope,
+            'envelope2': self.envelope2,
+            'lfo': self.lfo
+        }
+        return dictionary
+
+    def plot_env(self, ax):
+        env = self.get_envelope(ENV_LENGTH_FOR_PLOTS)
+        ax.plot(np.linspace(0, ENV_LENGTH_FOR_PLOTS, len(env)), env, 'black')
+
+class Oscillator:
+    def __init__(self, mode: str, modulation = None, detune_oct = 0, detune_cent = 0) -> None:
         self.mode = mode
         self.modulation = modulation
-
         self.cents = detune_cent
         self.octave = detune_oct
-
-        if mode == 'sine':
-            self.func = np.sin
-        if mode == 'square':
-            self.func = signal.square
-        if mode == 'saw':
-            self.func = signal.sawtooth
-        if mode == 'triangle':
-            self.func = lambda arr: signal.sawtooth(arr, 0.5)
-        if mode == 'noise':
-            self.func = lambda arr: rand(len(arr)) * 2 - 1
-        if mode == 'm_saw':
-            self.func = lambda arr: signal.sawtooth(arr, modulation)
-        if mode == 'm_square':
-            self.func = lambda arr: signal.square(arr, modulation)
+        self.func = getattr(osc, mode)
 
     def __str__(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
@@ -51,13 +127,13 @@ class Oscillator:
             'modulation': self.modulation,
             'detune_oct': self.octave,
             'detune_cent': self.cents
+
         }
         return dictionary
 
-    def play_freq(self, duration, freq) -> np.ndarray:
+    def play_freq(self, freq: float, time_arr: np.ndarray) -> np.ndarray:
         freq = (freq * 2**self.octave)  * 1.0005777895065548**self.cents
-        arr = np.arange(round(duration * SAMPLE_RATE)) * 2 * np.pi / (SAMPLE_RATE/freq)
-        wave = self.func(arr)
+        wave = self.func(time_arr*freq * 2*np.pi, self.modulation)
         return wave
 
     def plot(self, ax = None) -> None:
@@ -66,52 +142,11 @@ class Oscillator:
         ax.plot(self.play_freq(CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS, FREQ_FOR_PLOTS))
         ax.set_label(self.mode)
 
-class Envelope:
-    modes = ['adsr', 'ad']
-    def __init__(self, envelope: tuple, mode='adsr') -> None:
-        assert mode in self.modes, f'undefined mode, use {self.modes}'
-        self.mode = mode
-        self.envelope = envelope
-
-    def __str__(self) -> str:
-        return json.dumps(self.to_dict(), indent=2)
-
-    def to_dict(self) -> dict:
-        dictionary = {
-            'mode': self.mode,
-            'envelope': self.envelope
-            }
-        return dictionary
-
-    def get_envelope(self, duration = None) -> np.ndarray:
-        if self.mode == 'adsr':
-            val_attack, val_decay, val_sustain, val_release = self.envelope
-            attack = np.linspace(0, 1, round(val_attack*SAMPLE_RATE))
-            decay = np.linspace(1, val_sustain, round(val_decay*SAMPLE_RATE))
-            if duration > len(attack) + len(decay):
-                sustain = np.full(round(duration * SAMPLE_RATE - len(decay) - len(attack)), val_sustain)
-            else:
-                sustain = []
-            release = np.linspace(val_sustain, 0, round(val_release*SAMPLE_RATE))
-            return np.concatenate((attack, decay, sustain, release))
-
-        if self.mode == 'ad':
-            val_attack, val_decay = self.envelope
-            attack = np.linspace(0, 1, round(val_attack*SAMPLE_RATE))
-            decay = np.linspace(1, 0, round(val_decay*SAMPLE_RATE))
-            return np.concatenate((attack, decay))
-
-    def plot(self, ax=None) -> None:
-        if not ax:
-            _, ax = plt.subplots()
-        env = self.get_envelope(ENV_LENGTH_FOR_PLOTS)
-        ax.plot(np.linspace(0, ENV_LENGTH_FOR_PLOTS, len(env)), env, 'black')
-
 class SynthBase:
 
-    def __init__(self, name: str, envelope: Envelope,  oscillators: list[Oscillator], osc_weights=None, volume = 1):
+    def __init__(self, name: str, time_keeper: TimeKeeper,  oscillators: list[Oscillator], osc_weights=None, volume = 1):
         self.name = name
-        self.envelope = envelope
+        self.time_keeper = time_keeper
         self.oscillators = oscillators
         if not osc_weights:
             self.weights = list(np.full(len(oscillators), 1/len(oscillators)))
@@ -126,10 +161,10 @@ class SynthBase:
     def to_dict(self) -> dict:
         dictionary = {
             'name': self.name,
-            'envelope': self.envelope.to_dict(),
+            'volume': self.volume,
+            'time_keeper': self.time_keeper.to_dict(),
             'oscillators': [osc.to_dict() for osc in self.oscillators],
-            'osc_weights': self.weights,
-            'volume': self.volume
+            'osc_weights': self.weights
         }
         return dictionary
 
@@ -139,7 +174,7 @@ class SynthBase:
 
     @staticmethod
     def from_dict(dictionary):
-        envelope = Envelope(**dictionary.pop('envelope'))
+        envelope = TimeKeeper(**dictionary.pop('time_keeper'))
         oscillators = [Oscillator(**osc) for osc in dictionary.pop('oscillators')]
         return SynthBase(dictionary.pop('name'), envelope, oscillators, **dictionary)
 
@@ -149,21 +184,25 @@ class SynthBase:
             return SynthBase.from_dict(json.load(file))
 
     def play_freq(self, length, freq, vel = 64) -> np.ndarray:
-        envelope = self.envelope.get_envelope(length)
+        envelope = self.time_keeper.get_envelope(length)
         duration = len(envelope)/SAMPLE_RATE
-        arr = self.oscillators[0].play_freq(duration, freq) * self.weights[0]
-        for osc, weight in zip(self.oscillators[1:], self.weights[1:]):
-            arr += osc.play_freq(duration, freq) * weight
+        time_arr = self.time_keeper.get_time_array(length, duration, vel)
+        arr = np.zeros(len(envelope))
+        for oscillator, weight in zip(self.oscillators, self.weights):
+            arr += oscillator.play_freq(freq, time_arr) * weight
         return np.multiply(arr*(self.volume*(vel/127)), envelope)
 
     def play_note(self, length, note, vel = 64) -> np.ndarray:
         freq = TUNING*np.power(2, (note-69)/12)
         return self.play_freq(length, freq, vel)
 
-    def play_noenv(self, lenght, freq) -> np.ndarray:
-        arr = self.oscillators[0].play_freq(lenght, freq) * self.weights[0]
-        for osc, weight in zip(self.oscillators[1:], self.weights):
-            arr += osc.play_freq(lenght, freq) * weight
+    def play_noenv(self, length, freq) -> np.ndarray:
+        envelope = self.time_keeper.get_envelope(length)
+        duration = len(envelope)/SAMPLE_RATE
+        time_arr = self.time_keeper.get_time_array(length, duration)
+        arr = self.oscillators[0].play_freq(length, time_arr) * self.weights[0]
+        for oscillator, weight in zip(self.oscillators[1:], self.weights[1:]):
+            arr += oscillator.play_freq(length, freq) * weight
         return arr
 
     def set_vol(self, vol) -> None:
@@ -188,7 +227,7 @@ class SynthBase:
         ax1 = fig.add_subplot(gs1[0])
         ax2 = fig.add_subplot(gs1[1])
 
-        self.envelope.plot(ax1)
+        self.time_keeper.plot_env(ax1)
         ax1.set_title('Envelope')
         ax1.get_yaxis().set_visible(False)
 
@@ -204,8 +243,8 @@ class SynthBase:
         ax3 = fig.add_subplot(gs2[0])
         ax4 = fig.add_subplot(gs2[1])
 
-        for osc in self.oscillators:
-            osc.plot(ax3)
+        for oscillator in self.oscillators:
+            oscillator.plot(ax3)
         ax3.legend([f'{osc.mode}, w = {weight}' for osc, weight in zip(self.oscillators, self.weights)], loc='upper left')
         ax3.set_title(f'Oscillators ({CYCLES_FOR_PLOTS} cycles)')
         ax3.get_xaxis().set_visible(False)
@@ -225,26 +264,26 @@ class SynthBase:
         return fig
 
 class Effect:
-    modes = ['band_pass', 'medfilt']
-    def __init__(self, controls: dict, mode: str, on = True) -> None:
-        assert mode in self.modes, f'unknown mode, try: {self.modes}'
-        self.controls = controls
+    def __init__(self, mode: str, controls: dict, on = True) -> None:
         self.mode = mode
+        self.controls = controls
         self.on = on
-        if mode == 'band_pass':
-            self.func = eff_func.band_pass
-        if mode == 'medfilt':
-            self.func = eff_func.medfilt
-        try:
-            self.apply(np.ndarray([1, 0, 1, 0, 1, 0.5, 1]))
-        except TypeError:
-            print('wrong keywords for effect control')
+        self.func = getattr(eff_func, mode)
+        # try: #TODO
+        #     self.apply(np.ndarray([1, 0, 1, 0, 1, 0.5, 1]))
+        # except TypeError:
+        #     print('wrong keywords for effect control')
 
+    def __str__(self):
+        controls = ''
+        for key, val in self.controls.items():
+            controls += f'{key} = {val}, '
+        return f'Effect({self.mode}, {controls})'
 
     def to_dict(self) -> dict:
         dictionary = {
-            'controls': self.controls,
-            'mode': self.mode
+            'mode': self.mode,
+            'controls': self.controls
         }
         return dictionary
 
@@ -262,8 +301,6 @@ class Effect:
             return self.func(arr, **self.controls)
         else:
             return arr
-
-
 
 class Instrument(SynthBase):
     def __init__(self, effects: list[Effect], *args, **kwargs) -> None:
@@ -292,8 +329,6 @@ class Instrument(SynthBase):
 
     @staticmethod
     def from_json(path: str):
-        if path == 'instruments/drums.json': #TODO nicely
-            return Drums()
         with open(path, encoding='utf-8') as file:
             return Instrument.from_dict(json.load(file))
 
@@ -303,23 +338,45 @@ class Instrument(SynthBase):
             arr = eff.apply(arr)
         return arr
 
-    def play_noenv(self, lenght, freq) -> np.ndarray:
-        arr = super().play_noenv(lenght, freq)
+    def play_noenv(self, length, freq) -> np.ndarray:
+        arr = super().play_noenv(length, freq)
         for eff in self.effects:
             arr = eff.apply(arr)
         return arr
 
+def get_user_inst(voice_name = ''):
+    while True:
+        name = input(f'filename for instrument in voice "{voice_name}" : ')
+        try:
+            if name == 'drums':
+                return Drums()
+            return Instrument.from_json(f'{INST_PATH}{name}.json')
+            print('Instrument assigned')
+        except FileNotFoundError:
+            print('No such file.')
+
+def inst_from_name(name: str):
+    if name == 'drums':
+        return Drums()
+    path = f'{INST_PATH}{name}.json'
+    return Instrument.from_json(path)    
+
 class Drums:
     def __init__(self) -> None:
-        self.kick = load_wav('./samples/kick.WAV', 32767)*5
-        self.snare = load_wav('./samples/snare.WAV', 32767)*5
-        self.hihat = load_wav('./samples/hihat.WAV', 32767)*2
+        self.name = 'drums'
+        self.volume = 1
+        self.kick = load_wav('./samples/kick.wav')*5
+        self.snare = load_wav('./samples/snare.wav')*5
+        self.hihat = load_wav('./samples/hihat.wav')*2
+        self.hihat_half = load_wav('./samples/hihat_half.wav')*5
 
-    def play_note(self, _, note , vel=64):
+    def play_note(self, length, note , vel=64):
         if note == 36:
-            return self.kick * vel/127
+            return self.kick * self.volume * vel/127
         if note == 38:
-            return self.snare * vel/127
+            return self.snare * self.volume * vel/127
         if note == 42:
-            return self.hihat * vel/127
-        print('undefined sample')
+            return self.hihat * self.volume * vel/127
+        if note == 46:
+            return (self.hihat_half * self.volume * vel/127)[:round(length*SAMPLE_RATE)]
+        raise Exception('note not found')
