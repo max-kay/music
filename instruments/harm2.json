@@ -1,6 +1,6 @@
 {
     "name": "harm2",
-    "volume": 1,
+    "volume": 0.8,
     "time_keeper": {
         "cables": {
             "lfo_to_freq": 0.0005,
@@ -51,9 +51,9 @@
         {
             "mode": "band_pass",
             "controls": {
-                "lowcut": 800,
-                "highcut": 5000,
-                "strength": 13
+                "lowcut": 200,
+                "highcut": 2500,
+                "strength": 5
             }
         }
     ]

@@ -6,11 +6,11 @@ from scipy.io import wavfile
 from scipy.fftpack import fftfreq, fft
 from scipy import signal
 
-import effects as eff_func
-import oscillators as osc
-import array_func as af
+from . import effects as eff_func
+from . import oscillators as osc
+from . import array_func as af
 
-from configs import CYCLES_FOR_PLOTS, DURATION_FOR_FFT, FREQ_FOR_PLOTS, INST_PATH, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, TUNING
+from .configs import CYCLES_FOR_PLOTS, DURATION_FOR_FFT, FREQ_FOR_PLOTS, INST_PATH, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, TUNING
 
 def load_wav(file_path: str):
     samplerate, arr = wavfile.read(file_path)
@@ -18,6 +18,9 @@ def load_wav(file_path: str):
     max_val = np.iinfo(arr.dtype).max
     arr = arr[:,0]/max_val
     return arr
+
+def get_default_time_arr(duration):
+    return np.linspace(0, duration, round(SAMPLE_RATE*duration))
 
 class TimeKeeper:
     def __init__(self, cables: dict, envelope, **kwargs):
@@ -55,6 +58,21 @@ class TimeKeeper:
             decay = np.linspace(1, 0, round(dur_decay*SAMPLE_RATE))
             return np.concatenate((attack, decay))
 
+        if len(envelope) == 3:
+            dur_attack, sus_decay, dur_release = envelope
+            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
+            if round(duration*SAMPLE_RATE) > len(attack):
+                length = (duration - len(attack)/SAMPLE_RATE)
+                arr = get_default_time_arr(length)
+                sustain = np.exp(np.log(sus_decay)*arr)
+                last_val = sustain[-1]
+            else:
+                sustain = []
+                last_val = 1
+            release = np.linspace(last_val, 0, round(dur_release*SAMPLE_RATE))
+            return np.concatenate((attack, sustain, release))
+
+
         if len(envelope) == 4:
             dur_attack, dur_decay, val_sustain, dur_release = envelope
             attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
@@ -64,39 +82,35 @@ class TimeKeeper:
             else:
                 sustain = []
             release = np.linspace(val_sustain, 0, round(dur_release*SAMPLE_RATE))
-            arr = np.concatenate((attack, decay, sustain, release))
-            return arr
+            return np.concatenate((attack, decay, sustain, release))
 
         if len(envelope) == 5:
             dur_attack, dur_decay, val_sustain, sus_decay, dur_release = envelope
             attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
             decay = np.linspace(1, val_sustain, round(dur_decay*SAMPLE_RATE))
-            if round(duration*SAMPLE_RATE) > len(attack) + len(decay): #TODO
-                samples = round(duration * SAMPLE_RATE - len(decay) - len(attack))
-                sustain = np.full(200, val_sustain)#TODO
+            if round(duration*SAMPLE_RATE) > len(attack) + len(decay):
+                length = (duration - (len(decay) + len(attack))/SAMPLE_RATE)
+                arr = get_default_time_arr(length)
+                sustain = np.exp(np.log(sus_decay)*arr)*val_sustain
                 last_val = sustain[-1]
             else:
                 sustain = []
                 last_val = val_sustain
             release = np.linspace(last_val, 0, round(dur_release*SAMPLE_RATE))
-            arr = np.concatenate((attack, decay, sustain, release))
-            return arr
-        
-    def __str__(self) -> str: #TODO
+            return np.concatenate((attack, decay, sustain, release))
+
+    def __str__(self) -> str:
         return 'TimeKeeper:'
 
     def get_envelope(self, duration: float) -> np.ndarray:
         return self.make_envelope(self.envelope, duration)
 
-    def get_time_array(self, length: float, duration: float, vel = 64):
-        time = np.linspace(0, duration, round(duration*SAMPLE_RATE))
-        time += getattr(osc, self.lfo['mode'])(time*self.lfo['freq'] * 2*np.pi, self.lfo['modulation']) * self.cables['lfo_to_freq']
+    def get_time_array(self, length: float, duration: float):
+        time = get_default_time_arr(duration)
+        time += osc.get_stammfunc(self.lfo['mode'])(time*self.lfo['freq'] * 2*np.pi, self.lfo['modulation']) * self.cables['lfo_to_freq']
         time += self.make_envelope(self.envelope, length) * self.cables['env_to_freq']
         time += af.cut_or_pad(len(time), self.make_envelope(self.envelope2, length) * self.cables['env2_to_freq'])
         return time
-
-    def __str__(self) -> str:
-        pass
 
     def to_dict(self) -> dict:
         dictionary = {
@@ -141,7 +155,7 @@ class Oscillator:
         if not ax:
             _, ax = plt.subplots()
         duration = CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS
-        time_arr = np.linspace(0, duration, round(duration*SAMPLE_RATE))
+        time_arr = get_default_time_arr(duration)
         ax.plot(self.play_freq(FREQ_FOR_PLOTS, time_arr))
         ax.set_label(self.mode)
 
@@ -151,10 +165,6 @@ class Effect:
         self.controls = controls
         self.on = on
         self.func = getattr(eff_func, mode)
-        # try: #TODO
-        #     self.apply(np.ndarray([1, 0, 1, 0, 1, 0.5, 1]))
-        # except TypeError:
-        #     print('wrong keywords for effect control')
 
     def __str__(self):
         controls = ''
@@ -230,7 +240,7 @@ class Synthesizer:
     def play_freq(self, length, freq, vel = 64) -> np.ndarray:
         envelope = self.time_keeper.get_envelope(length)
         duration = len(envelope)/SAMPLE_RATE
-        time_arr = self.time_keeper.get_time_array(length, duration, vel)
+        time_arr = self.time_keeper.get_time_array(length, duration)
         arr = np.zeros(len(envelope))
         for oscillator, weight in zip(self.oscillators, self.weights):
             arr += oscillator.play_freq(freq, time_arr) * weight
@@ -248,7 +258,6 @@ class Synthesizer:
         return self.play_freq(length, freq, vel)
 
     def get_fft(self, base_freq = FREQ_FOR_PLOTS) -> tuple[np.ndarray]:
-        # time_arr = np.linspace(0, DURATION_FOR_FFT, round(DURATION_FOR_FFT*SAMPLE_RATE))
         y = self.play_freq(DURATION_FOR_FFT, base_freq)
         N = len(y)
         T = 1.0 / SAMPLE_RATE
@@ -286,7 +295,7 @@ class Synthesizer:
         ax3.get_xaxis().set_visible(False)
 
         duration = CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS
-        time_arr = np.linspace(0, duration, round(duration*SAMPLE_RATE))
+        time_arr = get_default_time_arr(duration)
         arr = np.zeros(round(duration*SAMPLE_RATE))
         for weight, oscillator in zip(self.weights, self.oscillators):
             arr += oscillator.play_freq(FREQ_FOR_PLOTS, time_arr)*weight
@@ -310,8 +319,8 @@ class Drums:
         self.volume = 1
         self.kick = load_wav('./samples/kick.wav')*5
         self.snare = load_wav('./samples/snare.wav')*5
-        self.hihat = load_wav('./samples/hihat.wav')*2
-        self.hihat_half = load_wav('./samples/hihat_half.wav')*5
+        self.hihat = load_wav('./samples/hihat.wav')*.8
+        self.hihat_half = load_wav('./samples/hihat_half.wav')*2
 
     def __str__(self) -> str:
         return 'Drums'

@@ -1,25 +1,25 @@
 {
-    "name": "harmi",
-    "volume": 1.6,
+    "name": "test_instr2",
+    "volume": 0.8,
     "time_keeper": {
         "cables": {
-            "lfo_to_freq": 1,
+            "lfo_to_freq": 0.005,
             "env_to_freq": 0,
             "env2_to_freq": 0
-        },
+        }, 
         "envelope": [
-            0.05,
+            0.005,
             0.08,
-            0.8,
+            1,
             0.1
         ],
         "envelope2": [
             0.5
         ],
         "lfo": {
-            "mode": "sine",
-            "freq": 0.2,
-            "modulation": 0
+            "mode": "triangle",
+            "freq": 2,
+            "modulation": 0.2
         }
     },
     "oscillators": [
@@ -27,13 +27,13 @@
             "mode": "m_saw",
             "modulation": 0.7,
             "detune_oct": 0,
-            "detune_cent": 0
+            "detune_cent": 4
         },
         {
             "mode": "triangle",
             "modulation": null,
             "detune_oct": 0,
-            "detune_cent": 0
+            "detune_cent": -4
         },
         {
             "mode": "m_square",
@@ -43,18 +43,18 @@
         }
     ],
     "osc_weights": [
-        0.33333333333333337,
-        0.5000000000000001,
-        0.16666666666666669
+        0.3333333333333333,
+        0.5,
+        0.16666666666666666
     ],
     "effects": [
         {
+            "mode": "band_pass",
             "controls": {
-                "lowcut": 1000,
-                "highcut": 4000,
-                "strength": 6
-            },
-            "mode": "band_pass"
+                "lowcut": 200,
+                "highcut": 2500,
+                "strength": 5
+            }
         }
     ]
 }

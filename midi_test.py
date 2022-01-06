@@ -1,12 +1,11 @@
 import mido
 import numpy as np
 from scipy.io import wavfile
-from configs import SAMPLE_RATE
-import player
-import instruments as inst
+from music.configs import SAMPLE_RATE
+from music import player
 
 
-FILE_PATH = './midi_files/test.mid'
+FILE_PATH = './midi_files/seven8.mid'
 
 alles = player.Player.from_midi(FILE_PATH)
 

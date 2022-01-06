@@ -1,21 +1,22 @@
+import cProfile
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy.io import wavfile
-import cProfile
-from configs import SAMPLE_RATE
-import instruments as inst
+from music.configs import SAMPLE_RATE
+import music.instruments as inst
 
 
-harm = inst.Synthesizer.from_json('instruments/test_inst.json')
+instrument = inst.Synthesizer.from_json('instruments/test_instr2.json')
 
-bass = 57
+bass = 50
 
-arr = harm.play_note(5, bass)
+arr = instrument.play_note(5, bass)
 # arr += harm.play_note(5, bass + 7)
 # arr += harm.play_note(5, bass + 7 + 9)
 # arr += harm.play_note(5, bass + 7 + 9 + 7)
 
-wavfile.write(f'./out/{[eff.__str__() for eff in harm.effects]}.wav', SAMPLE_RATE, arr)
+wavfile.write(f'./out/{instrument.name}.wav', SAMPLE_RATE, arr)
 
-harm.plot()
-plt.show()
+
+# instrument.plot()
+# plt.show()

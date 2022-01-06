@@ -3,9 +3,9 @@ import numpy as np
 import mido
 from scipy.io import wavfile
 
-from configs import INST_PATH, PLAYR_PATH, SAMPLE_RATE
-import instruments as inst
-import array_func as af
+from .configs import INST_PATH, PLAYR_PATH, SAMPLE_RATE
+from . import instruments as inst
+from . import array_func as af
 
 class Voice:
     def __init__(self, name: str, instrument: inst.Synthesizer, notes: list, ccs: list) -> None:
