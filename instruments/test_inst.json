@@ -3,7 +3,7 @@
     "volume": 1.8,
     "time_keeper": {
         "cables": {
-            "lfo_to_freq": 0,
+            "lfo_to_freq": 1,
             "env_to_freq": 0,
             "env2_to_freq": 0
         },
@@ -13,7 +13,12 @@
             0.6,
             0.6,
             0.1
-        ]
+        ],
+        "lfo": {
+            "mode": "m_square",
+            "freq": 2,
+            "modulation": 0.3
+        }
     },
     "oscillators": [
         {
@@ -47,14 +52,5 @@
         0.13,
         0.09
     ],
-    "effects": [
-        {
-            "mode": "high_pass",
-            "controls": {
-                "lowcut": 100,
-                "highcut": 1000,
-                "strength": 0.9
-            }
-        }
-    ]
+    "effects": []
 }

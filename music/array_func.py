@@ -1,4 +1,7 @@
 import numpy as np
+from scipy.io import wavfile
+
+from .configs import SAMPLE_RATE
 
 def add_with_index(fix: np.ndarray, mobile: np.ndarray, index) -> np.ndarray:
     if len(mobile) + index > len(fix):
@@ -14,7 +17,24 @@ def add_dif_len(arr1, arr2):
         arr2 = np.pad(arr2, (0, len(arr1)-len(arr2)), constant_values=(0, 0))
     return np.add(arr1, arr2)
 
-def cut_or_pad(length: int, volatile: np.ndarray, pad_val=0):
+def cut_or_pad(length: int, volatile: np.ndarray, mode = 'val', pad_val = 0):
     if len(volatile) > length:
         return volatile[:length]
-    return np.pad(volatile, (0, length -len(volatile)), constant_values=(0, pad_val))
+    if mode == 'last':
+        return np.pad(volatile, (0, length -len(volatile)), constant_values=(0, volatile[-1]))
+    if mode == 'zero':
+        return np.pad(volatile, (0, length -len(volatile)), constant_values=(0, 0))
+    if mode == 'val':
+        return np.pad(volatile, (0, length -len(volatile)), constant_values=(0, pad_val))
+
+
+
+def load_wav(file_path: str):
+    samplerate, arr = wavfile.read(file_path)
+    assert samplerate == SAMPLE_RATE
+    max_val = np.iinfo(arr.dtype).max
+    arr = arr[:,0]/max_val
+    return arr
+
+def get_default_time_arr(duration):
+    return np.linspace(0, duration, round(SAMPLE_RATE*duration))

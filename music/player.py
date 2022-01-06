@@ -3,7 +3,7 @@ import numpy as np
 import mido
 from scipy.io import wavfile
 
-from .configs import INST_PATH, PLAYR_PATH, SAMPLE_RATE
+from .configs import PLAYR_PATH, SAMPLE_RATE
 from . import instruments as inst
 from . import array_func as af
 
@@ -103,6 +103,7 @@ class Player:
     def to_dict(self) -> dict:
         dictionary = {
             'name': self.name,
+            'effects': [effect.to_dict() for effect in self.effects],
             'voices': [voice.to_dict() for voice in self.voices]
         }
         return dictionary
@@ -113,8 +114,9 @@ class Player:
 
     @staticmethod
     def from_dict(dictionary: dict):
-        voices = [Voice.from_dict(voice) for voice in dictionary['voices']]
-        return Player(dictionary.pop('name'), voices)
+        voices = [Voice.from_dict(voice) for voice in dictionary.pop('voices')]
+        effects = [inst.Effect(**effect) for effect in dictionary.pop('effects')]
+        return Player(dictionary.pop('name'), voices, effects)
 
     @staticmethod
     def from_json(path: str):

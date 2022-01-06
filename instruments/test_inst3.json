@@ -1,0 +1,68 @@
+{
+    "name": "test_inst3",
+    "volume": 0.8,
+    "time_keeper": {
+        "cables": {
+            "lfo_to_freq": 0,
+            "env_to_freq": 0,
+            "env2_to_freq": -0.01
+        }, 
+        "envelope": [
+            0.05,
+            0.08,
+            0.9,
+            0.5,
+            0.1
+        ],
+        "envelope2": [
+            0.07
+        ],
+        "lfo": {
+            "mode": "triangle",
+            "freq": 2,
+            "modulation": 0.2
+        }
+    },
+    "oscillators": [
+        {
+            "mode": "triangle",
+            "modulation": 0.7,
+            "detune_oct": 0,
+            "detune_cent": 4
+        },
+        {
+            "mode": "triangle",
+            "modulation": null,
+            "detune_oct": 0,
+            "detune_cent": -4
+        },
+        {
+            "mode": "m_square",
+            "modulation": 0.75,
+            "detune_oct": 1,
+            "detune_cent": 5
+        },
+        {
+            "mode": "m_saw",
+            "modulation": 0.6,
+            "detune_oct": 1,
+            "detune_cent": -3
+        }
+    ],
+    "osc_weights": [
+        0.3333333333333333,
+        0.5,
+        0.1,
+        0.1
+    ],
+    "effects": [
+        {
+            "mode": "low_pass",
+            "controls":{
+                "cutoff": 800,
+                "slope": 4,
+                "strength": 2
+            }
+        }
+    ]
+}

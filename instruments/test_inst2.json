@@ -1,11 +1,11 @@
 {
-    "name": "test_instr2",
+    "name": "test_inst2",
     "volume": 0.8,
     "time_keeper": {
         "cables": {
-            "lfo_to_freq": 0.005,
+            "lfo_to_freq": 0,
             "env_to_freq": 0,
-            "env2_to_freq": 0
+            "env2_to_freq": 1
         }, 
         "envelope": [
             0.005,
@@ -14,7 +14,7 @@
             0.1
         ],
         "envelope2": [
-            0.5
+            0.7
         ],
         "lfo": {
             "mode": "triangle",

@@ -6,9 +6,9 @@ from music.configs import SAMPLE_RATE
 import music.instruments as inst
 
 
-instrument = inst.Synthesizer.from_json('instruments/test_instr2.json')
+instrument = inst.Synthesizer.from_json('instruments/test_inst3.json')
 
-bass = 50
+bass = 60
 
 arr = instrument.play_note(5, bass)
 # arr += harm.play_note(5, bass + 7)

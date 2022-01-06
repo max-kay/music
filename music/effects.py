@@ -15,13 +15,13 @@ def band_pass(arr: np.ndarray, lowcut, highcut, strength) -> np.ndarray:
     arr = signal.sosfilt(sos, arr)
     return arr
 
-def low_pass(arr: np.ndarray, cutoff, slope, strength) -> np.ndarray:
+def low_pass(arr: np.ndarray, cutoff, slope, strength) -> np.ndarray:#TODO
     N, Wn = signal.buttord([10, cutoff], [1, cutoff*2**(slope/10)], 3, strength+3, fs = SAMPLE_RATE)
     sos = signal.butter(N, Wn, 'band', output='sos', fs=SAMPLE_RATE)
     arr = signal.sosfilt(sos, arr)
     return arr
 
-def high_pass(arr: np.ndarray, cutoff, slope, strength) -> np.ndarray:
+def high_pass(arr: np.ndarray, cutoff, slope, strength) -> np.ndarray:#TODO
     N, Wn = signal.buttord([cutoff, 30_000], [cutoff*2**(slope/10), 40_000], 3, strength+3, fs = SAMPLE_RATE)
     sos = signal.butter(N, Wn, 'band', output='sos', fs=SAMPLE_RATE)
     arr = signal.sosfilt(sos, arr)

@@ -9,18 +9,9 @@ from scipy import signal
 from . import effects as eff_func
 from . import oscillators as osc
 from . import array_func as af
+from . import envelopes as enve
 
 from .configs import CYCLES_FOR_PLOTS, DURATION_FOR_FFT, FREQ_FOR_PLOTS, INST_PATH, SAMPLE_RATE, ENV_LENGTH_FOR_PLOTS, TUNING
-
-def load_wav(file_path: str):
-    samplerate, arr = wavfile.read(file_path)
-    assert samplerate == SAMPLE_RATE
-    max_val = np.iinfo(arr.dtype).max
-    arr = arr[:,0]/max_val
-    return arr
-
-def get_default_time_arr(duration):
-    return np.linspace(0, duration, round(SAMPLE_RATE*duration))
 
 class TimeKeeper:
     def __init__(self, cables: dict, envelope, **kwargs):
@@ -45,71 +36,17 @@ class TimeKeeper:
                 'modulation': 0
             }
 
-    @staticmethod
-    def make_envelope(envelope: list, duration: float) -> np.ndarray:
-        if len(envelope) == 1:
-            dur_attack, = envelope
-            attack = np.linspace(1, 0, round(dur_attack*SAMPLE_RATE))
-            return af.cut_or_pad(round(duration*SAMPLE_RATE), attack, pad_val=1)
-
-        if len(envelope) == 2:
-            dur_attack, dur_decay = envelope
-            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
-            decay = np.linspace(1, 0, round(dur_decay*SAMPLE_RATE))
-            return np.concatenate((attack, decay))
-
-        if len(envelope) == 3:
-            dur_attack, sus_decay, dur_release = envelope
-            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
-            if round(duration*SAMPLE_RATE) > len(attack):
-                length = (duration - len(attack)/SAMPLE_RATE)
-                arr = get_default_time_arr(length)
-                sustain = np.exp(np.log(sus_decay)*arr)
-                last_val = sustain[-1]
-            else:
-                sustain = []
-                last_val = 1
-            release = np.linspace(last_val, 0, round(dur_release*SAMPLE_RATE))
-            return np.concatenate((attack, sustain, release))
-
-
-        if len(envelope) == 4:
-            dur_attack, dur_decay, val_sustain, dur_release = envelope
-            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
-            decay = np.linspace(1, val_sustain, round(dur_decay*SAMPLE_RATE))
-            if round(duration*SAMPLE_RATE) > len(attack) + len(decay):
-                sustain = np.full(round(duration * SAMPLE_RATE - len(decay) - len(attack)), val_sustain)
-            else:
-                sustain = []
-            release = np.linspace(val_sustain, 0, round(dur_release*SAMPLE_RATE))
-            return np.concatenate((attack, decay, sustain, release))
-
-        if len(envelope) == 5:
-            dur_attack, dur_decay, val_sustain, sus_decay, dur_release = envelope
-            attack = np.linspace(0, 1, round(dur_attack*SAMPLE_RATE))
-            decay = np.linspace(1, val_sustain, round(dur_decay*SAMPLE_RATE))
-            if round(duration*SAMPLE_RATE) > len(attack) + len(decay):
-                length = (duration - (len(decay) + len(attack))/SAMPLE_RATE)
-                arr = get_default_time_arr(length)
-                sustain = np.exp(np.log(sus_decay)*arr)*val_sustain
-                last_val = sustain[-1]
-            else:
-                sustain = []
-                last_val = val_sustain
-            release = np.linspace(last_val, 0, round(dur_release*SAMPLE_RATE))
-            return np.concatenate((attack, decay, sustain, release))
-
     def __str__(self) -> str:
         return 'TimeKeeper:'
 
-    def get_envelope(self, duration: float) -> np.ndarray:
-        return self.make_envelope(self.envelope, duration)
+    def get_envelope(self, sus_length: float) -> np.ndarray:
+        return enve.make(self.envelope, sus_length)
 
-    def get_time_array(self, length: float, duration: float):
-        time = get_default_time_arr(duration)
-        time += osc.get_stammfunc(self.lfo['mode'])(time*self.lfo['freq'] * 2*np.pi, self.lfo['modulation']) * self.cables['lfo_to_freq']
-        time += self.make_envelope(self.envelope, length) * self.cables['env_to_freq']
-        time += af.cut_or_pad(len(time), self.make_envelope(self.envelope2, length) * self.cables['env2_to_freq'])
+    def get_time_array(self, sus_length: float, note_duration: float):
+        time = af.get_default_time_arr(note_duration)
+        time += osc.get_stamm_like(self.lfo['mode'])(time*self.lfo['freq'] * 2*np.pi, self.lfo['modulation']) * (self.cables['lfo_to_freq']/1000)
+        time += enve.stamm(self.envelope, sus_length) * self.cables['env_to_freq']
+        time += af.cut_or_pad(len(time), enve.stamm(self.envelope2, sus_length) * self.cables['env2_to_freq'], 'last')
         return time
 
     def to_dict(self) -> dict:
@@ -155,7 +92,7 @@ class Oscillator:
         if not ax:
             _, ax = plt.subplots()
         duration = CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS
-        time_arr = get_default_time_arr(duration)
+        time_arr = af.get_default_time_arr(duration)
         ax.plot(self.play_freq(FREQ_FOR_PLOTS, time_arr))
         ax.set_label(self.mode)
 
@@ -237,10 +174,10 @@ class Synthesizer:
         with open(path, encoding='utf-8') as file:
             return Synthesizer.from_dict(json.load(file))
 
-    def play_freq(self, length, freq, vel = 64) -> np.ndarray:
-        envelope = self.time_keeper.get_envelope(length)
-        duration = len(envelope)/SAMPLE_RATE
-        time_arr = self.time_keeper.get_time_array(length, duration)
+    def play_freq(self, sus_length, freq, vel = 64) -> np.ndarray:
+        envelope = self.time_keeper.get_envelope(sus_length)
+        note_duration = len(envelope)/SAMPLE_RATE
+        time_arr = self.time_keeper.get_time_array(sus_length, note_duration)
         arr = np.zeros(len(envelope))
         for oscillator, weight in zip(self.oscillators, self.weights):
             arr += oscillator.play_freq(freq, time_arr) * weight
@@ -253,9 +190,9 @@ class Synthesizer:
         assert len(weights) == len(self.oscillators), 'list must contain weights for every oscillator'
         self.weights = np.array(weights)/np.sum(weights)
 
-    def play_note(self, length, note, vel = 64) -> np.ndarray:
+    def play_note(self, sus_length, note, vel = 64) -> np.ndarray:
         freq = TUNING*np.power(2, (note-69)/12)
-        return self.play_freq(length, freq, vel)
+        return self.play_freq(sus_length, freq, vel)
 
     def get_fft(self, base_freq = FREQ_FOR_PLOTS) -> tuple[np.ndarray]:
         y = self.play_freq(DURATION_FOR_FFT, base_freq)
@@ -295,7 +232,7 @@ class Synthesizer:
         ax3.get_xaxis().set_visible(False)
 
         duration = CYCLES_FOR_PLOTS/FREQ_FOR_PLOTS
-        time_arr = get_default_time_arr(duration)
+        time_arr = af.get_default_time_arr(duration)
         arr = np.zeros(round(duration*SAMPLE_RATE))
         for weight, oscillator in zip(self.weights, self.oscillators):
             arr += oscillator.play_freq(FREQ_FOR_PLOTS, time_arr)*weight
@@ -317,15 +254,15 @@ class Drums:
     def __init__(self) -> None:
         self.name = 'drums'
         self.volume = 1
-        self.kick = load_wav('./samples/kick.wav')*5
-        self.snare = load_wav('./samples/snare.wav')*5
-        self.hihat = load_wav('./samples/hihat.wav')*.8
-        self.hihat_half = load_wav('./samples/hihat_half.wav')*2
+        self.kick = af.load_wav('./samples/kick.wav')*5
+        self.snare = af.load_wav('./samples/snare.wav')*5
+        self.hihat = af.load_wav('./samples/hihat.wav')*.8
+        self.hihat_half = af.load_wav('./samples/hihat_half.wav')*2
 
     def __str__(self) -> str:
         return 'Drums'
 
-    def play_note(self, length, note , vel=64):
+    def play_note(self, sus_length, note , vel=64):
         if note == 36:
             return self.kick * self.volume * vel/127
         if note == 38:
@@ -333,7 +270,7 @@ class Drums:
         if note == 42:
             return self.hihat * self.volume * vel/127
         if note == 46:
-            return (self.hihat_half * self.volume * vel/127)[:round(length*SAMPLE_RATE)]
+            return self.hihat_half * self.volume * vel/127
         raise Exception('note not found')
 
 def get_user_inst(voice_name = ''):
