@@ -1,9 +1,11 @@
 import numpy as np
 
 from scipy import signal
+import scipy
 from scipy.signal import signaltools
 
 from . import array_func as af
+from . import oscillators as osc
 
 from .configs import SAMPLE_RATE
 
@@ -50,3 +52,12 @@ def reverb(arr: np.ndarray, wet=1, dry=1) -> np.ndarray:
     for gain, delta in series:
         out = all_pass_delay(out, gain, delta)
     return af.add_dif_len(out * wet, arr * dry)/3
+
+def luis(arr: np.ndarray) -> np.ndarray:
+    time = np.linspace(0, 120, 400)
+    wave = osc.sine(time, 0)
+    arr = af.add_dif_len(signal.convolve(wave, arr), arr)
+    return arr
+
+def dist(arr: np.ndarray) -> np.ndarray:
+    return osc.triangle(arr, 0)

@@ -29,12 +29,18 @@ def cut_or_pad(length: int, volatile: np.ndarray, mode = 'val', pad_val = 0):
 
 
 
-def load_wav(file_path: str):
+def load_wav(file_path: str):#TODO
     samplerate, arr = wavfile.read(file_path)
     assert samplerate == SAMPLE_RATE
     max_val = np.iinfo(arr.dtype).max
-    arr = arr[:,0]/max_val
+    # arr = arr[:,0]/max_val
     return arr
+
+def save_wav(file_path: str, arr: np.ndarray, dtype = 'int32') -> None:
+    dtype = np.dtype(dtype)
+    data = arr * np.iinfo(dtype).max *0.1
+    data = data.astype(dtype)
+    wavfile.write(file_path, SAMPLE_RATE, data)
 
 def get_default_time_arr(duration):
     return np.linspace(0, duration, round(SAMPLE_RATE*duration))

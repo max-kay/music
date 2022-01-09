@@ -83,7 +83,7 @@ class Oscillator:
         }
         return dictionary
 
-    def play_freq(self, freq: float, time_arr: np.ndarray) -> np.ndarray:
+    def play_freq(self, freq: float, time_arr: np.ndarray) -> np.ndarray:#TODO timekeeper to modulation
         freq = (freq * 2**self.octave)  * 1.0005777895065548**self.cents
         wave = self.func(time_arr*freq * 2*np.pi, self.modulation)
         return wave

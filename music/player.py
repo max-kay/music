@@ -135,11 +135,8 @@ class Player:
     def add_effect(self, effect: inst.Effect) -> None:
         self.effects.append(effect)
 
-    def save_wav(self, filename = None, dtype = 'int32') -> None:
-        if not filename:
-            filename = f'./out/{self.name}.wav'
+    def save_wav(self, file_path = None, dtype = 'int32') -> None:
+        if not file_path:
+            file_path = f'./out/{self.name}.wav'
         arr = self.play()
-        dtype = np.dtype(dtype)
-        data = arr * np.iinfo(dtype).max *0.1
-        data = data.astype(dtype)
-        wavfile.write(filename, SAMPLE_RATE, data)
+        af.save_wav(file_path, arr, dtype)

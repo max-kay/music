@@ -12,7 +12,7 @@ m_saw = lambda arr, mod: signal.sawtooth(arr, mod)
 m_square = lambda arr, mod: signal.square(arr, mod)
 
 
-def quadratic_base(arr, mod) -> np.ndarray: #taken from scipy wavefroms and modified
+def quadratic_base(arr, mod) -> np.ndarray: #taken from scipy wavefroms triangle and modified
     t, w = np.asarray(arr), np.asarray(mod)
     w = np.asarray(w + (t - t))
     t = np.asarray(t + (w - w))
@@ -66,3 +66,4 @@ def get_stamm_like(mode: str):
         return m_quadratic
     if mode == 'm_square':
         return m_saw
+    raise LookupError
