@@ -1,0 +1,36 @@
+{
+    "name": "clean_test",
+    "volume": 2,
+    "time_keeper": {
+        "cables": {
+            "lfo_to_freq": 0,
+            "env_to_freq": 0,
+            "env2_to_freq": 0
+        },
+        "envelope": [
+            0.02,
+            0.4,
+            0.9,
+            0.08
+        ]
+    },
+    "oscillators": [
+        {
+            "mode": "triangle",
+            "modulation": 0,
+            "detune_oct": 0,
+            "detune_cent": 0
+        },
+        {
+            "mode": "sine",
+            "modulation": 0,
+            "detune_oct": 0,
+            "detune_cent": 0
+        }
+    ],
+    "osc_weights": [
+        0,
+        3
+    ],
+    "effects": []
+}
